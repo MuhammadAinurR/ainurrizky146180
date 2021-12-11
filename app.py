@@ -1,72 +1,38 @@
-# web-app for API image manipulation
-from flask import Flask, request, render_template, send_from_directory
-import os
-from PIL import Image
-import cv2
-from werkzeug.utils import redirect
-import process as process
+from flask import Flask, render_template, request, url_for
+
+from tensorflow import keras
+from tensorflow.keras.preprocessing.image import load_img
+from tensorflow.keras.models import load_model
+import pickle
+import numpy as np
+from tensorflow.keras.applications.vgg16 import preprocess_input
 
 app = Flask(__name__)
-APP_ROOT = os.path.dirname(os.path.abspath(__file__))
+model = load_model('model.h5')
 
-@app.after_request
-def add_header(r):
-    r.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    r.headers["Pragma"] = "no-cache"
-    r.headers["Expires"] = "0"
-    r.headers['Cache-Control'] = 'public, max-age=0'
-    return r
 
-# default access page
-@app.route("/")
-def main():
-    return render_template('proses.html')
+import pickle
+labels = ['kucing', 'anjing']
 
-# upload selected image and forward to processing page
-@app.route("/proses1", methods=['POST'])
-def proses1():
-    target = os.path.join(APP_ROOT, 'static/images/')
-    filename = request.files['file']
-    print('filename : ',filename)
+@app.route('/', methods=['GET'])
+def hello_word():
+    return render_template('index.html')
 
-    # create image directory if not found
-    if not os.path.isdir(target):
-        os.mkdir(target)
+@app.route('/', methods=['POST'])
+def predict():
+    imagefile = request.files['imagefile']
+    image_path = "./static/image.jpg" 
+    imagefile.save(image_path)
 
-    # save file
-    data = os.path.join(target, "query.jpg")
-    filename.save(data)
-    #img = cv2.imread(data, cv2.IMREAD_GRAYSCALE)
-    img=data
-    print(img)
-    # check mode
-    if 'otsu' in request.form.get('select_thresholding'):
-        mode = 'otsu'
-    elif 'niblack' in request.form.get('select_thresholding'):
-        mode = 'niblack'
-    elif 'sauvola' in request.form.get('select_thresholding'):
-        mode = 'sauvola'
-        
-    #process
-    if mode == 'otsu':
-        print('start otsu')
-        img_res = process.otsu_thresh(img)
-        print(img_res)
-        cv2.imwrite("/".join([target, 'result.jpg']),img_res)
-    elif mode == 'niblack':
-        img_res = process.niblack_thresh(img)
-        cv2.imwrite("/".join([target, 'result.jpg']),img_res)
-    elif mode == 'sauvola':
-        img_res = process.sauvola_thresh(img)
-        cv2.imwrite("/".join([target, 'result.jpg']),img_res)
+    image = load_img(image_path, target_size=[100, 100])
+    image = np.asarray(image)
+    image = preprocess_input(image)
+    image = image.reshape(-1, 100, 100, 3)
+    p = model.predict(image)
+    p = np.argmax(p, axis=1)
+    classification = '%s ' % labels[p[0]]
 
-    # forward to processing page
-    return redirect('/')
+    return render_template('index.html', prediction = classification)
 
-# retrieve file from 'static/images' directory
-@app.route('/static/images/<filename>')
-def send_image(filename):
-    return send_from_directory("static/images", filename)
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     app.run(debug=True)
